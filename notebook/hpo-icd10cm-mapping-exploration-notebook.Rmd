@@ -1,0 +1,71 @@
+---
+title: "hpo-icd10cm-mapping-exploration-notebook"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+**Author:** Patrick Wu  
+**Date:** 2021-09-12  
+
+# Compare maps from HPO terms to ICD10CM codes to PheRS map  
+
+Import packages etc
+```{r}
+set.seed(1)
+PATH <- "../data/"
+suppressWarnings({library(glue); library(tidyverse); library(vroom)})
+```
+
+Import data  
+```{r}
+umls_map <- vroom(glue("{PATH}umls_icd10cm_hpo_20210912.csv"), 
+                  .name = janitor::make_clean_names, 
+                  col_types = cols()) %>% 
+  filter(!is.na(hpo_code) & !is.na(icd10cm_code)) %>% 
+  select(-hpo_tty, -icd10cm_tty)
+  
+phers_map <- vroom(glue("{PATH}HPO_to_ICD10.txt"),
+                   .name = janitor::make_clean_names, 
+                   col_types = cols())
+```
+  
+Find differences between two tables
+```{r}
+merged_tables <- full_join(phers_map, umls_map, by = c("icd10" = "icd10cm_code"))
+```
+  
+Get mapped HPO terms that are not in PheRS HPO map   
+```{r}
+umls_phers_diff <- merged_tables %>% 
+  filter(is.na(hpo_term_id)) %>% 
+  select(cui, hpo_code, hpo_str, icd10, icd10cm_str)
+```
+
+1202 HPO codes mapped to ICD10CM with UMLS semantic mapping that were not in PheRS  
+```{r}
+umls_phers_diff %>% distinct(hpo_code) %>% count()
+```
+
+View sample of mapped HPO terms not included in PheRS map  
+```{r}
+head(umls_phers_diff)
+```
+
+## Metadata  
+
+"umls_icd10cm_hpo_20210912.csv":  
+
+  * HPO terms were mapped to ICD10CM codes using UMLS semantic mapping.[1,2]  
+
+"HPO_to_ICD10.txt":  
+
+  * This file was downloaded from https://phewascatalog.org/ on 2021-09-12. Also see related publication.[3]  
+
+**References**  
+
+Please cite these papers if you use this resource in a publication:  
+
+  1. Fung, K. W. & Bodenreider, O. Utilizing the UMLS for semantic mapping between terminologies. AMIA Annu. Symp. Proc. 266–270 (2005)  
+  2. Wu P, Gifford A, Meng X, Li X, Campbell H, Varley T, Zhao J, Carroll R, Bastarache L, Denny JC, Theodoratou E, Wei W-Q. 2019. Mapping ICD-10 and ICD-10-CM Codes to Phecodes: Workflow Development and Initial Evaluation. JMIR Med Inform 7:e14325.  
+  3. Bastarache, L. et al. Improving the phenotype risk score as a scalable approach to identifying patients with Mendelian disease. J. Am. Med. Inform. Assoc. 26, 1437–1447 (2019)  
+
