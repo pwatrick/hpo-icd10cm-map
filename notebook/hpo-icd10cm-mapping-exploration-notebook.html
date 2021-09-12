@@ -218,15 +218,148 @@ phers_map &lt;- vroom(glue(&quot;{PATH}HPO_to_ICD10.txt&quot;),
 ## 4 C0037011 HP:0030834 Shoulder pain             M25.519 Pain in unspecified sho…
 ## 5 C0022596 HP:0000972 Thickened palms and soles L85.2   Keratosis punctata (pal…
 ## 6 C0234665 HP:0500043 Eyelid retraction         H02.53  Eyelid retraction</code></pre>
+</div>
+<div id="use-phemap-to-expand-hpo-mappings" class="section level1">
+<h1>Use PheMap to expand HPO mappings</h1>
+<div id="look-at-phemap-umls-concepts" class="section level2">
+<h2>Look at PheMap umls concepts</h2>
+<pre class="r"><code>#&quot;PheMap_UMLS_Concepts_1.1.csv&quot;: Downloaded from CPM website &quot;https://www.vumc.org/cpm/phemap&quot;  
+phemap_umls &lt;- vroom(glue(&quot;{PATH}PheMap_UMLS_Concepts_1.1.csv&quot;),
+                     .name = janitor::make_clean_names, 
+                     col_types = cols())  
+phemap_umls %&gt;% head()</code></pre>
+<pre><code>## # A tibble: 6 × 3
+##   phecode cui      tfidf
+##   &lt;chr&gt;   &lt;chr&gt;    &lt;dbl&gt;
+## 1 008     C0008354 31.9 
+## 2 008     C0041466 17.6 
+## 3 008     C0016479 11.1 
+## 4 008     C0013370  9.21
+## 5 008     C0003237  7.07
+## 6 008     C0343398  6.56</code></pre>
+</div>
+<div id="see-which-cuis-from-phemap-have-hpo-equivalents" class="section level2">
+<h2>See which CUIs from PheMap have HPO equivalents</h2>
+<pre class="r"><code>#import umls file
+umls_map &lt;- vroom(glue(&quot;{PATH}umls_icd10cm_hpo_20210912_v2.csv&quot;), 
+                  .name = janitor::make_clean_names, 
+                  col_types = cols()) %&gt;% 
+  select(hpo_cui, hpo_code, hpo_str) %&gt;% 
+  filter(!is.na(hpo_cui)) %&gt;% 
+  distinct()
+
+umls_map %&gt;% distinct(hpo_cui) %&gt;% count() #16349</code></pre>
+<pre><code>## # A tibble: 1 × 1
+##       n
+##   &lt;int&gt;
+## 1 16349</code></pre>
+<pre class="r"><code>umls_map %&gt;% distinct(hpo_code) %&gt;% count() #14831</code></pre>
+<pre><code>## # A tibble: 1 × 1
+##       n
+##   &lt;int&gt;
+## 1 14831</code></pre>
+<pre class="r"><code>#merge
+merged_tables &lt;- inner_join(umls_map, phemap_umls, by = c(&quot;hpo_cui&quot; = &quot;cui&quot;))
+merged_tables %&gt;% distinct(hpo_cui) %&gt;% count() #3407  </code></pre>
+<pre><code>## # A tibble: 1 × 1
+##       n
+##   &lt;int&gt;
+## 1  3407</code></pre>
+<pre class="r"><code>#add phecode description
+phecode_descriptions &lt;- as_tibble(PheWAS::pheinfo) %&gt;% select(phecode, description)
+merged_tables1 &lt;- inner_join(merged_tables, phecode_descriptions, by = &quot;phecode&quot;)
+tail(merged_tables1)</code></pre>
+<pre><code>## # A tibble: 6 × 6
+##   hpo_cui  hpo_code   hpo_str           phecode tfidf description               
+##   &lt;chr&gt;    &lt;chr&gt;      &lt;chr&gt;             &lt;chr&gt;   &lt;dbl&gt; &lt;chr&gt;                     
+## 1 C0917996 HP:0004944 Cerebral aneurysm 348      1.78 Other conditions of brain 
+## 2 C0917996 HP:0004944 Cerebral aneurysm 348.8    2.70 Encephalopathy, not elsew…
+## 3 C0917996 HP:0004944 Cerebral aneurysm 430.1    8.07 Subarachnoid hemorrhage   
+## 4 C0917996 HP:0004944 Cerebral aneurysm 433.5   47.7  Cerebral aneurysm         
+## 5 C0917996 HP:0004944 Cerebral aneurysm 442     11.6  Other aneurysm            
+## 6 C0917996 HP:0004944 Cerebral aneurysm 751.21   1.46 Cystic kidney disease</code></pre>
+<pre class="r"><code>merged_tables1 %&gt;% 
+  filter(str_detect(hpo_str, &quot;diabetes&quot;)) %&gt;% 
+  distinct(hpo_code, phecode, .keep_all = TRUE) %&gt;% 
+  arrange(desc(tfidf))</code></pre>
+<pre><code>## # A tibble: 82 × 6
+##    hpo_cui  hpo_code   hpo_str                             phecode tfidf description
+##    &lt;chr&gt;    &lt;chr&gt;      &lt;chr&gt;                               &lt;chr&gt;   &lt;dbl&gt; &lt;chr&gt;      
+##  1 C0085207 HP:0009800 gestational diabetes                649.1   100.  Diabetes o…
+##  2 C0011854 HP:0100651 Type 1 diabetes                     250.1    51.0 Type 1 dia…
+##  3 C0011854 HP:0100651 Type 1 diabetes                     250.11   51.0 Type 1 dia…
+##  4 C0011854 HP:0100651 Type 1 diabetes                     250.12   51.0 Type 1 dia…
+##  5 C0011854 HP:0100651 Type 1 diabetes                     250.13   51.0 Type 1 dia…
+##  6 C0011854 HP:0100651 Type 1 diabetes                     250.14   51.0 Type 1 dia…
+##  7 C0011854 HP:0100651 Type 1 diabetes                     250.15   51.0 Diabetes t…
+##  8 C0011860 HP:0005978 Type II diabetes mellitus           250.25   33.7 Diabetes t…
+##  9 C0687720 HP:0000863 Neurohypophyseal diabetes insipidus 253.3    33.4 Diabetes i…
+## 10 C0011860 HP:0005978 Type II diabetes mellitus           250.2    31.2 Type 2 dia…
+## # … with 72 more rows</code></pre>
+<p>See whether any mappings were captured using phemap, but not by my implementation of simple semantic mapping (i.e., equivalent CUIs)</p>
+<pre class="r"><code>#import umls file
+semantic_map &lt;- vroom(glue(&quot;{PATH}umls_icd10cm_hpo_20210912_v2.csv&quot;), 
+                  .name = janitor::make_clean_names, 
+                  col_types = cols()) %&gt;% 
+  select(-hpo_tty, -icd10cm_tty) %&gt;% 
+  filter(!is.na(hpo_cui) &amp; !is.na(icd10cm_cui)) %&gt;% 
+  distinct()
+
+#Find HPO terms that aren&#39;t mapped to ICD10CM codes but is mapped to phecode via phemap  
+mapped_hpo_icd10cm &lt;- semantic_map %&gt;% 
+  select(hpo_code) %&gt;% 
+  distinct()
+mapped_hpo_icd10cm$icd10cm_mapped &lt;- 1
+merged_tables1$phemap_mapped &lt;- 1
+
+merged_tables2 &lt;- full_join(merged_tables1, mapped_hpo_icd10cm, by = &quot;hpo_code&quot;) 
+
+merged_tables3 &lt;- merged_tables2 %&gt;% 
+  filter(is.na(icd10cm_mapped)) %&gt;% 
+  arrange(desc(tfidf)) %&gt;% 
+  distinct(hpo_code, phecode, .keep_all = TRUE)
+
+merged_tables3[100:120,]  </code></pre>
+<pre><code>## # A tibble: 21 × 8
+##    hpo_cui  hpo_code   hpo_str      phecode tfidf description      phemap_mapped
+##    &lt;chr&gt;    &lt;chr&gt;      &lt;chr&gt;        &lt;chr&gt;   &lt;dbl&gt; &lt;chr&gt;                    &lt;dbl&gt;
+##  1 C0040136 HP:0100031 Neoplasia o… 193      48.3 Thyroid cancer               1
+##  2 C0013421 HP:0001332 Dystonic mo… 333.4    48.1 Torsion dystonia             1
+##  3 C0340803 HP:0025104 Capillary m… 753.2    47.6 Congenital anom…             1
+##  4 C0221353 HP:0000085 Horseshoe k… 751.22   47.6 Other specified…             1
+##  5 C0007137 HP:0002860 Squamous ce… 172.22   47.5 Squamous cell c…             1
+##  6 C0085684 HP:0009027 Foot drop    736      47.3 Other acquired …             1
+##  7 C0011253 HP:0000746 Delusions    295.2    46.7 Paranoid disord…             1
+##  8 C0155700 HP:0011708 Mobitz type… 426.23   46.6 Second degree A…             1
+##  9 C0040046 HP:0004418 Thrombophle… 451      46.0 Phlebitis and t…             1
+## 10 C0456909 HP:0000618 Blindness    367.9    44.4 Blindness and l…             1
+## # … with 11 more rows, and 1 more variable: icd10cm_mapped &lt;dbl&gt;</code></pre>
+<p>Example of HPO mapping only identified with phemap relationships: HP:0002860 “Squamous cell carcinoma”.</p>
+<ul>
+<li>Mapping not found in either HPO to ICD9, ICD10, or phecode maps.<br />
+</li>
+<li>Using relationships from PheMap finds more mappings, as PheRS is specialized for Mendelian diseases and PheMap covers more of phenome.<br />
+</li>
+<li>Note that I have not manually reviewed the HPO to phecode mappings using PheMap relationships, so some mappings may not work for your particular research question.</li>
+</ul>
+</div>
 <div id="metadata" class="section level2">
 <h2>Metadata</h2>
-<p>“umls_icd10cm_hpo_20210912.csv”:</p>
+<p>“umls_icd10cm_hpo_20210912.csv” and “umls_icd10cm_hpo_20210912_v2.csv”</p>
 <ul>
-<li>HPO terms were mapped to ICD10CM codes using UMLS semantic mapping.[1,2]</li>
+<li>HPO terms were mapped to ICD10CM codes using UMLS semantic mapping.[1,2]<br />
+</li>
+<li>“umls_icd10cm_hpo_20210912_v2.csv”: Also includes CUIs for ICD10CM codes</li>
 </ul>
 <p>“HPO_to_ICD10.txt”:</p>
 <ul>
 <li>This file was downloaded from <a href="https://phewascatalog.org/" class="uri">https://phewascatalog.org/</a> on 2021-09-12. Also see related publication.[3]</li>
+</ul>
+<p>“PheMap_UMLS_Concepts_1.1.csv”</p>
+<ul>
+<li>Downloaded from <a href="https://www.vumc.org/cpm/phemap" class="uri">https://www.vumc.org/cpm/phemap</a><br />
+</li>
+<li>See related publication.[4]</li>
 </ul>
 <p><strong>References</strong></p>
 <p>Please cite these papers if you use this resource in a publication:</p>
@@ -235,7 +368,9 @@ phers_map &lt;- vroom(glue(&quot;{PATH}HPO_to_ICD10.txt&quot;),
 </li>
 <li>Wu P, Gifford A, Meng X, Li X, Campbell H, Varley T, Zhao J, Carroll R, Bastarache L, Denny JC, Theodoratou E, Wei W-Q. 2019. Mapping ICD-10 and ICD-10-CM Codes to Phecodes: Workflow Development and Initial Evaluation. JMIR Med Inform 7:e14325.<br />
 </li>
-<li>Bastarache, L. et al. Improving the phenotype risk score as a scalable approach to identifying patients with Mendelian disease. J. Am. Med. Inform. Assoc. 26, 1437–1447 (2019)</li>
+<li>Bastarache, L. et al. Improving the phenotype risk score as a scalable approach to identifying patients with Mendelian disease. J. Am. Med. Inform. Assoc. 26, 1437–1447 (2019)<br />
+</li>
+<li>Zheng, N. S. et al. PheMap: a multi-resource knowledge base for high-throughput phenotyping within electronic health records. J. Am. Med. Inform. Assoc. (2020) <a href="doi:10.1093/jamia/ocaa104" class="uri">doi:10.1093/jamia/ocaa104</a></li>
 </ol>
 </div>
 </div>

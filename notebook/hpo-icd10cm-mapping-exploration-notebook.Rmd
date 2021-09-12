@@ -51,15 +51,92 @@ View sample of mapped HPO terms not included in PheRS map
 head(umls_phers_diff)
 ```
 
+# Use PheMap to expand HPO mappings  
+## Look at PheMap umls concepts
+```{r}
+#"PheMap_UMLS_Concepts_1.1.csv": Downloaded from CPM website "https://www.vumc.org/cpm/phemap"  
+phemap_umls <- vroom(glue("{PATH}PheMap_UMLS_Concepts_1.1.csv"),
+                     .name = janitor::make_clean_names, 
+                     col_types = cols())  
+phemap_umls %>% head()
+```
+
+## See which CUIs from PheMap have HPO equivalents
+```{r}
+#import umls file
+umls_map <- vroom(glue("{PATH}umls_icd10cm_hpo_20210912_v2.csv"), 
+                  .name = janitor::make_clean_names, 
+                  col_types = cols()) %>% 
+  select(hpo_cui, hpo_code, hpo_str) %>% 
+  filter(!is.na(hpo_cui)) %>% 
+  distinct()
+
+umls_map %>% distinct(hpo_cui) %>% count() #16349
+umls_map %>% distinct(hpo_code) %>% count() #14831
+
+#merge
+merged_tables <- inner_join(umls_map, phemap_umls, by = c("hpo_cui" = "cui"))
+merged_tables %>% distinct(hpo_cui) %>% count() #3407  
+
+#add phecode description
+phecode_descriptions <- as_tibble(PheWAS::pheinfo) %>% select(phecode, description)
+merged_tables1 <- inner_join(merged_tables, phecode_descriptions, by = "phecode")
+tail(merged_tables1)
+
+merged_tables1 %>% 
+  filter(str_detect(hpo_str, "diabetes")) %>% 
+  distinct(hpo_code, phecode, .keep_all = TRUE) %>% 
+  arrange(desc(tfidf))
+```
+
+See whether any mappings were captured using phemap, but not by my implementation of simple semantic mapping (i.e., equivalent CUIs)  
+```{r}
+#import umls file
+semantic_map <- vroom(glue("{PATH}umls_icd10cm_hpo_20210912_v2.csv"), 
+                  .name = janitor::make_clean_names, 
+                  col_types = cols()) %>% 
+  select(-hpo_tty, -icd10cm_tty) %>% 
+  filter(!is.na(hpo_cui) & !is.na(icd10cm_cui)) %>% 
+  distinct()
+
+#Find HPO terms that aren't mapped to ICD10CM codes but is mapped to phecode via phemap  
+mapped_hpo_icd10cm <- semantic_map %>% 
+  select(hpo_code) %>% 
+  distinct()
+mapped_hpo_icd10cm$icd10cm_mapped <- 1
+merged_tables1$phemap_mapped <- 1
+
+merged_tables2 <- full_join(merged_tables1, mapped_hpo_icd10cm, by = "hpo_code") 
+
+merged_tables3 <- merged_tables2 %>% 
+  filter(is.na(icd10cm_mapped)) %>% 
+  arrange(desc(tfidf)) %>% 
+  distinct(hpo_code, phecode, .keep_all = TRUE)
+
+merged_tables3[100:120,]  
+```
+
+Example of HPO mapping only identified with phemap relationships: HP:0002860 "Squamous cell carcinoma".  
+
+  * Mapping not found in either HPO to ICD9, ICD10, or phecode maps.  
+  * Using relationships from PheMap finds more mappings, as PheRS is specialized for Mendelian diseases and PheMap covers more of phenome.  
+  * Note that I have not manually reviewed the HPO to phecode mappings using PheMap relationships, so some mappings may not work for your particular research question.   
+
 ## Metadata  
 
-"umls_icd10cm_hpo_20210912.csv":  
+"umls_icd10cm_hpo_20210912.csv" and "umls_icd10cm_hpo_20210912_v2.csv"
 
   * HPO terms were mapped to ICD10CM codes using UMLS semantic mapping.[1,2]  
+  * "umls_icd10cm_hpo_20210912_v2.csv": Also includes CUIs for ICD10CM codes  
 
 "HPO_to_ICD10.txt":  
 
   * This file was downloaded from https://phewascatalog.org/ on 2021-09-12. Also see related publication.[3]  
+  
+"PheMap_UMLS_Concepts_1.1.csv"  
+
+  * Downloaded from https://www.vumc.org/cpm/phemap  
+  * See related publication.[4]  
 
 **References**  
 
@@ -68,4 +145,5 @@ Please cite these papers if you use this resource in a publication:
   1. Fung, K. W. & Bodenreider, O. Utilizing the UMLS for semantic mapping between terminologies. AMIA Annu. Symp. Proc. 266–270 (2005)  
   2. Wu P, Gifford A, Meng X, Li X, Campbell H, Varley T, Zhao J, Carroll R, Bastarache L, Denny JC, Theodoratou E, Wei W-Q. 2019. Mapping ICD-10 and ICD-10-CM Codes to Phecodes: Workflow Development and Initial Evaluation. JMIR Med Inform 7:e14325.  
   3. Bastarache, L. et al. Improving the phenotype risk score as a scalable approach to identifying patients with Mendelian disease. J. Am. Med. Inform. Assoc. 26, 1437–1447 (2019)  
+  4. Zheng, N. S. et al. PheMap: a multi-resource knowledge base for high-throughput phenotyping within electronic health records. J. Am. Med. Inform. Assoc. (2020) doi:10.1093/jamia/ocaa104  
 
